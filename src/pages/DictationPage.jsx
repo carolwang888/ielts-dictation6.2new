@@ -664,28 +664,38 @@ export default function DictationPage() {
           </div>
           
           {/* Actions */}
-          <div className="flex gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
             <button
               onClick={handlePlayAgain}
-              className="flex-1 btn-secondary flex items-center justify-center gap-2"
+              className="btn-secondary flex items-center justify-center gap-2"
             >
               <RotateCcw size={20} />
               重新听写
             </button>
-            
+
             {wrongCount + emptyCount > 0 && (
               <button
                 onClick={handleDictateErrors}
-                className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl py-3 hover:shadow-lg transition-all"
+                className="flex items-center justify-center gap-2 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl py-3 hover:shadow-lg transition-all"
               >
                 <AlertCircle size={20} />
-                听写错词 ({wrongCount + emptyCount})
+                听写本次错词 ({wrongCount + emptyCount})
               </button>
+            )}
+
+            {groupErrorWords.length > 0 && (
+              <Link
+                to={`/group-error-words/${id}`}
+                className="flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl py-3 hover:shadow-lg transition-all"
+              >
+                <AlertCircle size={20} />
+                本组错题本 ({groupErrorWords.length})
+              </Link>
             )}
             
             <Link
               to={`/group/${id}`}
-              className="flex-1 btn-primary text-center"
+              className="btn-primary text-center py-3"
             >
               返回词组
             </Link>

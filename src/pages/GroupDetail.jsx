@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { useWords } from '../context/WordsContext';
-import { BookOpen, PenTool, ArrowLeft, Minus, Plus } from 'lucide-react';
+import { BookOpen, PenTool, ArrowLeft, Minus, Plus, AlertCircle } from 'lucide-react';
 
 export default function GroupDetail() {
   const { id } = useParams();
@@ -66,7 +66,7 @@ export default function GroupDetail() {
       </div>
       
       {/* Action Buttons */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className={`grid gap-4 ${errorCount > 0 ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-2'}`}>
         <Link
           to={`/study/${id}`}
           className="bg-gradient-to-br from-pink-400 to-pink-500 text-white rounded-2xl p-6 flex flex-col items-center gap-3 shadow-lg hover:shadow-xl transition-all card-hover"
@@ -88,6 +88,19 @@ export default function GroupDetail() {
             <p className="text-sm text-coral-100"> dictation</p>
           </div>
         </Link>
+
+        {errorCount > 0 && (
+          <Link
+            to={`/group-error-words/${id}`}
+            className="bg-gradient-to-br from-red-400 to-pink-500 text-white rounded-2xl p-6 flex flex-col items-center gap-3 shadow-lg hover:shadow-xl transition-all card-hover"
+          >
+            <AlertCircle size={48} />
+            <div className="text-center">
+              <p className="font-medium text-lg">本组错题听写</p>
+              <p className="text-sm text-red-100"> {errorCount} 个易错词</p>
+            </div>
+          </Link>
+        )}
       </div>
       
       {/* Word Preview */}

@@ -20,8 +20,7 @@ export default function ErrorWords() {
     chapters.forEach(chapter => {
       chapter.groups.forEach(group => {
         group.words.forEach(word => {
-          // 只检查 minErrors，不限制 maxErrors
-          if (word.errorCount >= minErrors) {
+          if (word.errorCount >= minErrors && word.errorCount <= maxErrors) {
             words.push({
               ...word,
               groupId: group.id,
@@ -34,7 +33,7 @@ export default function ErrorWords() {
     
     console.log('ErrorWords: found', words.length, 'error words');
     return words.sort((a, b) => b.errorCount - a.errorCount);
-  }, [chapters, minErrors, initialized]);
+  }, [chapters, minErrors, maxErrors, initialized]);
   
   const toggleWordSelection = (wordId) => {
     setSelectedWords(prev => {
