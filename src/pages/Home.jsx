@@ -48,6 +48,49 @@ export default function Home() {
         </div>
       </div>
       
+      {/* 上次听写位置 */}
+      {(() => {
+        // 找到最近一次听写的组
+        let latestGroup = null;
+        let latestDate = null;
+        Object.entries(lastDictationPosition).forEach(([groupId, pos]) => {
+          if (!latestDate || new Date(pos.date) > new Date(latestDate)) {
+            latestDate = pos.date;
+            latestGroup = groupId;
+          }
+        });
+        if (!latestGroup) return null;
+        // 找到组名
+        let groupName = latestGroup;
+        let groupHistory = dictationHistory[latestGroup];
+        chapters.forEach(ch => {
+          ch.groups.forEach(g => {
+            if (g.id === latestGroup) groupName = g.name;
+          });
+        });
+        return (
+          <Link
+            to={`/group/${latestGroup}`}
+            className="bg-white rounded-2xl shadow-lg p-4 flex items-center gap-4 hover:bg-coral-50 transition-colors ring-2 ring-coral-300"
+          >
+            <div className="w-12 h-12 bg-coral-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <Clock className="text-coral-500" size={24} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-coral-500 font-medium">上次听写</p>
+              <p className="font-medium text-gray-800 truncate">{groupName}</p>
+              <p className="text-xs text-gray-400">
+                {new Date(latestDate).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                {groupHistory && (
+                  <span className="ml-2 text-green-600">正确率 {groupHistory.lastAccuracy}%</span>
+                )}
+              </p>
+            </div>
+            <ChevronRight className="text-coral-400 flex-shrink-0" size={20} />
+          </Link>
+        );
+      })()}
+      
       {/* Chapter List */}
       <div className="space-y-3">
         {chapters.map(chapter => {
