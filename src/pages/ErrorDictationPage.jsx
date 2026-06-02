@@ -771,6 +771,26 @@ export default function ErrorDictationPage() {
                       )}
                     </div>
                     <p className="text-xs text-gray-500">{result.word.meaning}</p>
+                    {/* 正确单词也可修改错误次数 */}
+                    {result.word.errorCount > 0 && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <button
+                          onClick={() => setErrorCount(result.word.id, result.word.errorCount - 1)}
+                          className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 hover:text-red-500 transition-colors text-gray-500"
+                        >
+                          <Minus size={10} />
+                        </button>
+                        <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full min-w-[24px] text-center">
+                          {result.word.errorCount}
+                        </span>
+                        <button
+                          onClick={() => setErrorCount(result.word.id, result.word.errorCount + 1)}
+                          className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 hover:bg-coral-100 hover:text-coral-500 transition-colors text-gray-500"
+                        >
+                          <Plus size={10} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {correctCount === 0 && (
