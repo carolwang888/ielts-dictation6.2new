@@ -1,35 +1,66 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Volume2, X, Check, Play, Square } from 'lucide-react';
 
-// 精选12种清晰发音：每种口音3种（年轻男、年轻女、老人）
-// 这些是 Google Chrome 和主流浏览器中最常见的高质量英语语音
-const CURATED_VOICES = [
-  // 英式 en-GB
-  { lang: 'en-GB', gender: 'female-young', label: '🇬🇧 英式 · 年轻女声', keywords: ['google uk english female', 'microsoft hazel', 'karen', 'serena', 'martha', 'libby'] },
-  { lang: 'en-GB', gender: 'male-young', label: '🇬🇧 英式 · 年轻男声', keywords: ['google uk english male', 'microsoft ryan', 'daniel', 'george', 'ryan', 'thomas'] },
-  { lang: 'en-GB', gender: 'elder', label: '🇬🇧 英式 · 成熟声', keywords: ['microsoft susan', 'kate', 'oliver', 'arthur'] },
-  // 美式 en-US
-  { lang: 'en-US', gender: 'female-young', label: '🇺🇸 美式 · 年轻女声', keywords: ['google us english female', 'microsoft zira', 'samantha', 'allison', 'ava', 'jenny', 'aria'] },
-  { lang: 'en-US', gender: 'male-young', label: '🇺🇸 美式 · 年轻男声', keywords: ['google us english male', 'microsoft david', 'alex', 'tom', 'guy', 'brandon', 'christopher'] },
-  { lang: 'en-US', gender: 'elder', label: '🇺🇸 美式 · 成熟声', keywords: ['microsoft mark', 'fred', 'ralph', 'albert'] },
-  // 澳式 en-AU
-  { lang: 'en-AU', gender: 'female-young', label: '🇦🇺 澳式 · 年轻女声', keywords: ['google australian english female', 'microsoft natasha', 'catherine', 'karen'] },
-  { lang: 'en-AU', gender: 'male-young', label: '🇦🇺 澳式 · 年轻男声', keywords: ['google australian english male', 'microsoft william', 'james', 'lee'] },
-  { lang: 'en-AU', gender: 'elder', label: '🇦🇺 澳式 · 成熟声', keywords: ['gordon', 'duncan'] },
-  // 印度 en-IN
-  { lang: 'en-IN', gender: 'female-young', label: '🇮🇳 印度 · 年轻女声', keywords: ['google indian english female', 'microsoft heera', 'neerja', 'priya'] },
-  { lang: 'en-IN', gender: 'male-young', label: '🇮🇳 印度 · 年轻男声', keywords: ['google indian english male', 'microsoft ravi', 'prabhat'] },
-  { lang: 'en-IN', gender: 'elder', label: '🇮🇳 印度 · 成熟声', keywords: ['hemant', 'kalpana'] },
-];
-
 const ALLOWED_LANGS = ['en-GB', 'en-US', 'en-AU', 'en-IN'];
 
-function matchVoiceToCurated(voice, curatedEntry) {
+// 黑名单：这些语音不清晰，必须排除
+const BLACKLIST = [
+  'albert', 'bad news', 'bahh', 'bells', 'boing', 'bubbles', 'cellos',
+  'fred', 'good news', 'hysterical', 'junior', 'kathy', 'organ',
+  'princess', 'ralph', 'trinoids', 'whisper', 'wobble', 'zarvox',
+  'deranged', 'pipe organ', 'superstar', 'jester', 'agnes',
+  'bruce', 'vicki', 'victoria', 'novelty', 'eddy', 'flo', 'grandma',
+  'grandpa', 'reed', 'rocko', 'sandy', 'shelley', 'superstar'
+];
+
+// 高质量语音关键词（优先匹配这些）
+const HIGH_QUALITY_KEYWORDS = {
+  'en-GB': {
+    'female-young': ['google uk english female', 'hazel', 'serena', 'martha', 'libby', 'sonia', 'mia', 'amy'],
+    'male-young': ['google uk english male', 'ryan', 'daniel', 'george', 'thomas', 'alfie', 'oliver'],
+    'elder': ['susan', 'kate', 'arthur'],
+  },
+  'en-US': {
+    'female-young': ['google us english female', 'zira', 'samantha', 'allison', 'ava', 'jenny', 'aria', 'michelle', 'emma', 'amber'],
+    'male-young': ['google us english male', 'david', 'alex', 'tom', 'guy', 'brandon', 'christopher', 'eric', 'roger', 'steffan', 'aaron', 'andrew', 'davis'],
+    'elder': ['mark', 'matthew'],
+  },
+  'en-AU': {
+    'female-young': ['google australian english female', 'natasha', 'catherine', 'karen', 'nicole'],
+    'male-young': ['google australian english male', 'william', 'james', 'lee', 'darren'],
+    'elder': ['gordon', 'duncan'],
+  },
+  'en-IN': {
+    'female-young': ['google indian english female', 'heera', 'neerja', 'priya', 'sapna'],
+    'male-young': ['google indian english male', 'ravi', 'prabhat', 'hemant'],
+    'elder': ['kalpana'],
+  },
+};
+
+const GENDER_LABELS = {
+  'female-young': '年轻女声',
+  'male-young': '年轻男声',
+  'elder': '成熟声',
+};
+
+const LANG_LABELS = {
+  'en-GB': '🇬🇧 英式英语',
+  'en-US': '🇺🇸 美式英语',
+  'en-AU': '🇦🇺 澳式英语',
+  'en-IN': '🇮🇳 印度英语',
+};
+
+function isBlacklisted(voice) {
   const nameLower = voice.name.toLowerCase();
-  // 语言必须匹配
-  if (!voice.lang.startsWith(curatedEntry.lang)) return false;
-  // 名称关键词匹配
-  return curatedEntry.keywords.some(kw => nameLower.includes(kw.toLowerCase()));
+  return BLACKLIST.some(b => nameLower.includes(b));
+}
+
+function matchVoiceToSlot(voice, lang, gender) {
+  if (!voice.lang.startsWith(lang)) return false;
+  if (isBlacklisted(voice)) return false;
+  const keywords = HIGH_QUALITY_KEYWORDS[lang]?.[gender] || [];
+  const nameLower = voice.name.toLowerCase();
+  return keywords.some(kw => nameLower.includes(kw.toLowerCase()));
 }
 
 export default function VoiceSettings({ onClose }) {
@@ -44,20 +75,21 @@ export default function VoiceSettings({ onClose }) {
       const voices = window.speechSynthesis.getVoices();
       setAllVoices(voices);
       
-      // 恢复保存的选择
       const savedVoiceName = localStorage.getItem('selected-voice');
       if (savedVoiceName) {
         const saved = voices.find(v => v.name === savedVoiceName);
-        if (saved) {
+        if (saved && !isBlacklisted(saved)) {
           setSelectedVoice(saved);
           return;
         }
       }
       
-      // 默认选择第一个英式云端语音
-      const englishVoices = voices.filter(v => ALLOWED_LANGS.some(l => v.lang.startsWith(l)));
-      const defaultVoice = englishVoices.find(v => !v.localService && v.lang.startsWith('en-GB'))
-        || englishVoices.find(v => !v.localService && v.lang.startsWith('en-US'))
+      // 默认选择
+      const englishVoices = voices.filter(v => 
+        ALLOWED_LANGS.some(l => v.lang.startsWith(l)) && !isBlacklisted(v)
+      );
+      const defaultVoice = englishVoices.find(v => !v.localService && v.lang.startsWith('en-US'))
+        || englishVoices.find(v => !v.localService && v.lang.startsWith('en-GB'))
         || englishVoices.find(v => !v.localService)
         || englishVoices[0];
       if (defaultVoice) {
@@ -75,18 +107,40 @@ export default function VoiceSettings({ onClose }) {
     };
   }, []);
   
-  // 构建精选语音列表：每个 curated slot 匹配一个实际可用的语音
-  const curatedList = CURATED_VOICES.map(entry => {
-    // 先找精确匹配
-    let matched = allVoices.find(v => matchVoiceToCurated(v, entry));
-    // 如果没找到精确匹配，按语言兜底取第一个未被使用的
-    return { ...entry, voice: matched || null };
-  }).filter(item => item.voice !== null);
+  // 构建精选列表
+  const buildCuratedList = () => {
+    const result = [];
+    const usedNames = new Set();
+    
+    for (const lang of ALLOWED_LANGS) {
+      for (const gender of ['female-young', 'male-young', 'elder']) {
+        // 找到匹配的语音
+        const matched = allVoices.find(v => 
+          matchVoiceToSlot(v, lang, gender) && !usedNames.has(v.name)
+        );
+        if (matched) {
+          usedNames.add(matched.name);
+          result.push({
+            lang,
+            gender,
+            label: `${LANG_LABELS[lang].split(' ')[0]} ${LANG_LABELS[lang].split(' ')[1]} · ${GENDER_LABELS[gender]}`,
+            voice: matched,
+          });
+        }
+      }
+    }
+    
+    return result;
+  };
   
-  // 如果精选匹配不到足够的，补充所有符合语言条件的语音
-  const curatedVoiceNames = new Set(curatedList.map(item => item.voice.name));
+  const curatedList = buildCuratedList();
+  
+  // 如果精选不够，补充其他清晰的英语语音
+  const curatedNames = new Set(curatedList.map(item => item.voice.name));
   const extraVoices = allVoices.filter(v => 
-    ALLOWED_LANGS.some(l => v.lang.startsWith(l)) && !curatedVoiceNames.has(v.name)
+    ALLOWED_LANGS.some(l => v.lang.startsWith(l)) && 
+    !isBlacklisted(v) && 
+    !curatedNames.has(v.name)
   );
   
   const handlePreview = useCallback((voice) => {
@@ -131,14 +185,6 @@ export default function VoiceSettings({ onClose }) {
     setIsPlaying(false);
     setPlayingVoiceName(null);
   };
-
-  // 按语言分组显示
-  const langGroups = [
-    { lang: 'en-GB', label: '🇬🇧 英式英语' },
-    { lang: 'en-US', label: '🇺🇸 美式英语' },
-    { lang: 'en-AU', label: '🇦🇺 澳式英语' },
-    { lang: 'en-IN', label: '🇮🇳 印度英语' },
-  ];
   
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -191,66 +237,61 @@ export default function VoiceSettings({ onClose }) {
             )}
           </div>
           
-          {/* Curated Voice List */}
-          {curatedList.length > 0 && (
-            <div>
-              <p className="text-sm font-medium text-gray-600 mb-2">精选语音</p>
-              {langGroups.map(({ lang, label }) => {
-                const langItems = curatedList.filter(item => item.lang === lang);
-                if (langItems.length === 0) return null;
-                return (
-                  <div key={lang} className="mb-3">
-                    <p className="text-xs text-gray-500 mb-1.5 font-medium">{label}</p>
-                    <div className="space-y-1.5">
-                      {langItems.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className={`w-full p-2.5 rounded-xl transition-all ${
-                            selectedVoice?.name === item.voice.name
-                              ? 'bg-coral-100 ring-2 ring-coral-400'
-                              : 'bg-gray-50 hover:bg-gray-100'
-                          }`}
+          {/* Curated Voice List by Language */}
+          {ALLOWED_LANGS.map(lang => {
+            const langItems = curatedList.filter(item => item.lang === lang);
+            if (langItems.length === 0) return null;
+            return (
+              <div key={lang}>
+                <p className="text-sm font-medium text-gray-600 mb-2">{LANG_LABELS[lang]}</p>
+                <div className="space-y-1.5">
+                  {langItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className={`w-full p-2.5 rounded-xl transition-all ${
+                        selectedVoice?.name === item.voice.name
+                          ? 'bg-coral-100 ring-2 ring-coral-400'
+                          : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <button
+                          onClick={() => handleSelectVoice(item.voice)}
+                          className="flex-1 min-w-0 text-left"
                         >
-                          <div className="flex items-center justify-between">
-                            <button
-                              onClick={() => handleSelectVoice(item.voice)}
-                              className="flex-1 min-w-0 text-left"
-                            >
-                              <p className="font-medium text-gray-800 text-sm">{item.label}</p>
-                              <p className="text-xs text-gray-400 truncate">{item.voice.name}</p>
-                            </button>
-                            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                              <button
-                                onClick={() => handleSelectAndPreview(item.voice)}
-                                className={`p-1.5 rounded-full transition-colors ${
-                                  playingVoiceName === item.voice.name
-                                    ? 'bg-coral-500 text-white'
-                                    : 'bg-gray-200 text-gray-600 hover:bg-coral-100 hover:text-coral-500'
-                                }`}
-                                title="选择并试听"
-                              >
-                                <Play size={14} />
-                              </button>
-                              {selectedVoice?.name === item.voice.name && (
-                                <Check className="text-coral-500" size={18} />
-                              )}
-                            </div>
-                          </div>
+                          <p className="font-medium text-gray-800 text-sm">{GENDER_LABELS[item.gender]}</p>
+                          <p className="text-xs text-gray-400 truncate">{item.voice.name}</p>
+                        </button>
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          <button
+                            onClick={() => handleSelectAndPreview(item.voice)}
+                            className={`p-1.5 rounded-full transition-colors ${
+                              playingVoiceName === item.voice.name
+                                ? 'bg-coral-500 text-white'
+                                : 'bg-gray-200 text-gray-600 hover:bg-coral-100 hover:text-coral-500'
+                            }`}
+                            title="选择并试听"
+                          >
+                            <Play size={14} />
+                          </button>
+                          {selectedVoice?.name === item.voice.name && (
+                            <Check className="text-coral-500" size={18} />
+                          )}
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  ))}
+                </div>
+              </div>
+            );
+          })}
           
-          {/* Extra voices if curated list is too short */}
-          {curatedList.length < 4 && extraVoices.length > 0 && (
+          {/* Extra clean voices not in curated list */}
+          {extraVoices.length > 0 && (
             <div>
-              <p className="text-sm font-medium text-gray-600 mb-2">其他可用语音</p>
+              <p className="text-sm font-medium text-gray-600 mb-2">其他清晰语音</p>
               <div className="space-y-1.5">
-                {extraVoices.map((voice, idx) => (
+                {extraVoices.slice(0, 8).map((voice, idx) => (
                   <div
                     key={idx}
                     className={`w-full p-2.5 rounded-xl transition-all ${
@@ -300,7 +341,7 @@ export default function VoiceSettings({ onClose }) {
           {/* Tips */}
           <div className="bg-green-50 rounded-xl p-3">
             <p className="text-sm text-green-700">
-              💡 点击 ▶️ 按钮试听后自动选择该语音，切换后立即生效，无需重新开始听写。
+              💡 点击 ▶️ 试听并选择语音，切换后立即生效。推荐使用云端语音，音质更好。
             </p>
           </div>
         </div>
