@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useWords } from '../context/WordsContext';
 import { useTTS } from '../hooks/useTTS';
-import { ArrowLeft, Play, Pause, Square, RotateCcw, Check, AlertCircle, Save, Clock, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Square, RotateCcw, Check, AlertCircle, Save, Clock, ChevronLeft, ChevronRight, Settings, Volume2, Minus, Plus } from 'lucide-react';
 
 const STORAGE_KEY = 'dictation-progress';
 
@@ -12,7 +12,7 @@ function normalizeForCompare(str) {
 
 export default function DictationPage() {
   const { id } = useParams();
-  const { getGroup, incrementErrorCount, initialized, chapters } = useWords();
+  const { getGroup, incrementErrorCount, setErrorCount, initialized, chapters, recordDictationResult, saveLastDictationPosition } = useWords();
   const { playDictation, stop, updatePlaybackParams } = useTTS();
   
   const [phase, setPhase] = useState('setup'); // setup, playing, result
@@ -129,7 +129,6 @@ export default function DictationPage() {
       (idx) => {
         const actualIdx = idx + fromIndex;
         setCurrentWordIndex(actualIdx);
-        // 不自动 focus，避免打断用户正在输入的光标
       }
     );
     
@@ -151,7 +150,6 @@ export default function DictationPage() {
   }, [loadProgress, startDictation]);
   
   const handlePause = useCallback(() => {
-    // 停止当前播放（设置 abort 标志并取消语音）
     stop();
     setIsPaused(true);
     setIsPlaying(false);
@@ -162,7 +160,6 @@ export default function DictationPage() {
     setIsPaused(false);
     setIsPlaying(true);
     
-    // playDictation 内部会重置 abortRef，所以可以直接调用
     playPromiseRef.current = playDictation(
       group.words.slice(currentWordIndex),
       playRate,
@@ -170,7 +167,6 @@ export default function DictationPage() {
       (idx) => {
         const actualIdx = idx + currentWordIndex;
         setCurrentWordIndex(actualIdx);
-        // 不自动 focus，避免打断用户正在输入的光标
       }
     );
     
@@ -215,11 +211,19 @@ export default function DictationPage() {
       };
     });
     
+    const correctCount = newResults.filter(r => r.isCorrect).length;
+    
+    // 记录听写结果（正确率）
+    recordDictationResult(id, correctCount, group.words.length);
+    
+    // 保存上次听写位置
+    saveLastDictationPosition(id);
+    
     console.log('handleSubmit: total wrong', wrongCount, 'wordIds:', wrongWordIds);
     setResults(newResults);
     setPhase('result');
     clearProgress();
-  }, [group, answers, isPlaying, stop, incrementErrorCount, clearProgress]);
+  }, [group, answers, isPlaying, stop, incrementErrorCount, clearProgress, id, recordDictationResult, saveLastDictationPosition]);
   
   const handlePlayAgain = useCallback(() => {
     clearProgress();
@@ -232,7 +236,6 @@ export default function DictationPage() {
   const handleDictateErrors = useCallback(() => {
     const wrongWordIds = results.filter(r => !r.isCorrect).map(r => r.word.id);
     if (wrongWordIds.length === 0) return;
-    // 只存 word IDs，不存完整对象，保证 errorCount 与 chapters 同步
     localStorage.setItem('error-dictation-words', JSON.stringify(wrongWordIds));
     localStorage.setItem('error-dictation-words-time', Date.now().toString());
     navigate(`/dictation-error?t=${Date.now()}`);
@@ -249,7 +252,6 @@ export default function DictationPage() {
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
       
-      // 使用保存的语音
       const savedVoiceName = localStorage.getItem('selected-voice');
       const voices = window.speechSynthesis.getVoices();
       const savedVoice = voices.find(v => v.name === savedVoiceName);
@@ -261,6 +263,26 @@ export default function DictationPage() {
       window.speechSynthesis.speak(utterance);
     }
   }, [group, currentWordIndex, playRate]);
+  
+  // 播放错误单词的发音
+  const playWordAudio = useCallback((word) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(word);
+    utterance.lang = 'en-GB';
+    utterance.rate = 0.8;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    
+    const savedVoiceName = localStorage.getItem('selected-voice');
+    const voices = window.speechSynthesis.getVoices();
+    const savedVoice = voices.find(v => v.name === savedVoiceName);
+    if (savedVoice) {
+      utterance.voice = savedVoice;
+      utterance.lang = savedVoice.lang;
+    }
+    
+    window.speechSynthesis.speak(utterance);
+  }, []);
   
   useEffect(() => {
     return () => {
@@ -644,6 +666,14 @@ export default function DictationPage() {
                       {result.word.phonetic && (
                         <span className="text-xs text-gray-400 phonetic">[{result.word.phonetic}]</span>
                       )}
+                      {/* 需求6: 错误单词发音按钮 */}
+                      <button
+                        onClick={() => playWordAudio(result.word.word)}
+                        className="p-1 text-coral-500 hover:text-coral-700 hover:bg-coral-50 rounded-full transition-colors"
+                        title="播放发音"
+                      >
+                        <Volume2 size={14} />
+                      </button>
                     </div>
                     <p className="text-xs text-gray-500">{result.word.meaning}</p>
                     {!result.isCorrect && !result.isEmpty && (
@@ -654,6 +684,24 @@ export default function DictationPage() {
                     {result.isEmpty && (
                       <p className="text-xs text-gray-400 italic">未作答</p>
                     )}
+                    {/* 需求1: 可修改错误次数 */}
+                    <div className="flex items-center gap-1 mt-1">
+                      <button
+                        onClick={() => setErrorCount(result.word.id, result.word.errorCount - 1)}
+                        className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 hover:text-red-500 transition-colors text-gray-500"
+                      >
+                        <Minus size={10} />
+                      </button>
+                      <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full min-w-[24px] text-center">
+                        {result.word.errorCount}
+                      </span>
+                      <button
+                        onClick={() => setErrorCount(result.word.id, result.word.errorCount + 1)}
+                        className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 hover:bg-coral-100 hover:text-coral-500 transition-colors text-gray-500"
+                      >
+                        <Plus size={10} />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {wrongCount + emptyCount === 0 && (
@@ -693,11 +741,12 @@ export default function DictationPage() {
               </Link>
             )}
             
+            {/* 需求2: 返回本单元 */}
             <Link
               to={`/group/${id}`}
               className="btn-primary text-center py-3"
             >
-              返回词组
+              返回本单元
             </Link>
           </div>
         </div>

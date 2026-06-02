@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useWords } from '../context/WordsContext';
-import { AlertCircle, Filter, RotateCcw, Play, CheckSquare, Square, Minus, Plus } from 'lucide-react';
+import { AlertCircle, Filter, RotateCcw, Play, CheckSquare, Square, Minus, Plus, Volume2 } from 'lucide-react';
 
 export default function ErrorWords() {
   const { chapters, resetErrorCounts, setErrorCount, initialized } = useWords();
   const navigate = useNavigate();
   const [minErrors, setMinErrors] = useState(1);
-  const [maxErrors, setMaxErrors] = useState(9999); // 增大上限，确保显示所有错词
+  const [maxErrors, setMaxErrors] = useState(9999);
   const [selectedWords, setSelectedWords] = useState(new Set());
   const [selectMode, setSelectMode] = useState(false);
   
@@ -35,6 +35,41 @@ export default function ErrorWords() {
     return words.sort((a, b) => b.errorCount - a.errorCount);
   }, [chapters, minErrors, maxErrors, initialized]);
   
+  // 需求3: 按组统计错误单词数量
+  const groupErrorStats = useMemo(() => {
+    if (!initialized) return {};
+    const stats = {};
+    chapters.forEach(chapter => {
+      chapter.groups.forEach(group => {
+        const errCount = group.words.filter(w => w.errorCount >= minErrors && w.errorCount <= maxErrors).length;
+        if (errCount > 0) {
+          stats[group.id] = { name: group.name, count: errCount };
+        }
+      });
+    });
+    return stats;
+  }, [chapters, minErrors, maxErrors, initialized]);
+  
+  // 需求6: 播放单词发音
+  const playWordAudio = useCallback((word) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(word);
+    utterance.lang = 'en-GB';
+    utterance.rate = 0.8;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    
+    const savedVoiceName = localStorage.getItem('selected-voice');
+    const voices = window.speechSynthesis.getVoices();
+    const savedVoice = voices.find(v => v.name === savedVoiceName);
+    if (savedVoice) {
+      utterance.voice = savedVoice;
+      utterance.lang = savedVoice.lang;
+    }
+    
+    window.speechSynthesis.speak(utterance);
+  }, []);
+  
   const toggleWordSelection = (wordId) => {
     setSelectedWords(prev => {
       const newSet = new Set(prev);
@@ -57,7 +92,6 @@ export default function ErrorWords() {
   
   const handleDictateSelected = () => {
     if (selectedWords.size === 0) return;
-    // 只存 word IDs，ErrorDictationPage 会从 chapters 查实时 errorCount
     const selectedIds = errorWords.filter(w => selectedWords.has(w.id)).map(w => w.id);
     localStorage.setItem('error-dictation-words', JSON.stringify(selectedIds));
     localStorage.setItem('error-dictation-words-time', Date.now().toString());
@@ -199,6 +233,27 @@ export default function ErrorWords() {
         </div>
       )}
       
+      {/* 需求3: 每组错误单词数量标注 */}
+      {Object.keys(groupErrorStats).length > 0 && (
+        <div className="bg-white rounded-2xl shadow-lg p-4">
+          <h3 className="text-sm font-medium text-gray-600 mb-3">各组错误分布</h3>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(groupErrorStats).map(([groupId, stat]) => (
+              <Link
+                key={groupId}
+                to={`/group-error-words/${groupId}`}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+              >
+                <span className="text-sm text-gray-700">{stat.name}</span>
+                <span className="text-xs bg-red-200 text-red-700 px-1.5 py-0.5 rounded-full font-medium">
+                  {stat.count}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      
       {/* Word List */}
       {errorWords.length > 0 ? (
         <div className="bg-white rounded-2xl shadow-lg p-4">
@@ -231,6 +286,14 @@ export default function ErrorWords() {
                     {word.phonetic && (
                       <span className="text-xs text-gray-400 phonetic">[{word.phonetic}]</span>
                     )}
+                    {/* 需求6: 发音按钮 */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); playWordAudio(word.word); }}
+                      className="p-1 text-coral-500 hover:text-coral-700 hover:bg-coral-50 rounded-full transition-colors"
+                      title="播放发音"
+                    >
+                      <Volume2 size={14} />
+                    </button>
                   </div>
                   <p className="text-sm text-gray-500">{word.meaning}</p>
                   <Link
@@ -241,6 +304,7 @@ export default function ErrorWords() {
                   </Link>
                 </div>
                 
+                {/* 需求1: 可修改错误次数 */}
                 <div className="flex items-center gap-1">
                   <button
                     onClick={(e) => { e.stopPropagation(); setErrorCount(word.id, word.errorCount - 1); }}

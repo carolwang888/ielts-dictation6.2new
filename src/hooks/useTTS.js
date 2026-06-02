@@ -18,29 +18,39 @@ export function useTTS() {
         setTimeout(() => {
           voices = window.speechSynthesis.getVoices();
           setAvailableVoices(voices);
+          selectBestVoice(voices);
         }, 100);
       } else {
         setAvailableVoices(voices);
+        selectBestVoice(voices);
       }
+    };
+    
+    const selectBestVoice = (voices) => {
+      // 需求7: 只选择英语语音，去掉不正确的语言播报
+      const englishVoices = voices.filter(v => v.lang.startsWith('en'));
+      const voicePool = englishVoices.length > 0 ? englishVoices : voices;
       
       const savedVoiceName = localStorage.getItem('selected-voice');
       let voiceToUse = null;
       
       if (savedVoiceName) {
-        voiceToUse = voices.find(v => v.name === savedVoiceName);
+        // 优先使用保存的语音，但必须是英语
+        voiceToUse = voicePool.find(v => v.name === savedVoiceName);
       }
       
       if (!voiceToUse) {
-        voiceToUse = voices.find(v => 
+        // 优先选择云端英式英语
+        voiceToUse = voicePool.find(v => 
           !v.localService && v.lang.startsWith('en-GB')
-        ) || voices.find(v => 
+        ) || voicePool.find(v => 
           !v.localService && v.lang.startsWith('en')
         );
         
         if (!voiceToUse) {
-          voiceToUse = voices.find(v => v.lang.startsWith('en-GB')) 
-            || voices.find(v => v.lang.startsWith('en'))
-            || voices[0];
+          voiceToUse = voicePool.find(v => v.lang.startsWith('en-GB')) 
+            || voicePool.find(v => v.lang.startsWith('en'))
+            || voicePool[0];
         }
       }
       

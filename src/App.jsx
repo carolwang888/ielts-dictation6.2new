@@ -13,7 +13,7 @@ import ManageWords from './pages/ManageWords';
 function App() {
   return (
     <WordsProvider>
-      <BrowserRouter basename="/word-dictation417">
+      <BrowserRouter basename="/ielts-dictation6.2new">
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />

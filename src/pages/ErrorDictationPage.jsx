@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useWords } from '../context/WordsContext';
 import { useTTS } from '../hooks/useTTS';
-import { ArrowLeft, Play, Pause, Square, RotateCcw, Check, AlertCircle, Save, Clock, ChevronLeft, ChevronRight, Settings, Volume2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Square, RotateCcw, Check, AlertCircle, Save, Clock, ChevronLeft, ChevronRight, Settings, Volume2, Minus, Plus } from 'lucide-react';
 
 const STORAGE_KEY = 'error-dictation-progress';
 
@@ -12,12 +12,11 @@ function normalizeForCompare(str) {
 
 export default function ErrorDictationPage() {
   const [searchParams] = useSearchParams();
-  const { incrementErrorCount, initialized, chapters } = useWords();
+  const { incrementErrorCount, setErrorCount, initialized, chapters } = useWords();
   const { playDictation, stop, updatePlaybackParams } = useTTS();
   const navigate = useNavigate();
   
   const [phase, setPhase] = useState('setup');
-  // 使用连续的速度和间隔值代替 speedMode 两档选择
   const [playRate, setPlayRate] = useState(0.8);
   const [playInterval, setPlayInterval] = useState(5);
   const [currentWordIndex, setCurrentWordIndex] = useState(-1);
@@ -30,27 +29,24 @@ export default function ErrorDictationPage() {
   const [hasSavedProgress, setHasSavedProgress] = useState(false);
   const [savedProgressInfo, setSavedProgressInfo] = useState(null);
   const [decodeError, setDecodeError] = useState(false);
+  const [sourceGroupId, setSourceGroupId] = useState(null);
   
   const inputRefs = useRef({});
   const playPromiseRef = useRef(null);
   
-  // 用于跟踪 localStorage 读取状态的 ref，防止 StrictMode 下 useEffect 执行两次导致数据丢失
   const loadAttemptRef = useRef(false);
-  // 缓存从 localStorage 读取的原始数据，防止 StrictMode 第二次执行时数据已被删除
   const cachedStorageRef = useRef(null);
-  // 记录上一次加载时的 t 参数，用于检测是否需要重新加载（第二轮听写）
   const lastTRef = useRef(null);
 
-  // 当速度/间隔改变时，实时更新 TTS 参数（在播放中也立即生效）
+  // 当速度/间隔改变时，实时更新 TTS 参数
   useEffect(() => {
     updatePlaybackParams(playRate, playInterval * 1000);
   }, [playRate, playInterval, updatePlaybackParams]);
 
-  // 当 URL 的 t 参数变化时（第二轮听写），重置所有状态以重新加载数据
+  // 当 URL 的 t 参数变化时（第二轮听写），重置所有状态
   const currentT = searchParams.get('t');
   useEffect(() => {
     if (lastTRef.current !== null && lastTRef.current !== currentT) {
-      // t 参数变化，说明是新一轮听写，重置所有状态
       loadAttemptRef.current = false;
       cachedStorageRef.current = null;
       setLoaded(false);
@@ -65,19 +61,15 @@ export default function ErrorDictationPage() {
   }, [currentT]);
 
   useEffect(() => {
-    // 等 chapters 加载完成后再解析 word ID
     if (chapters.length === 0) return;
-    // loaded 已完成则跳过（防止 chapters 变化触发重复执行）
     if (loaded) return;
-    // 防止重复执行（React StrictMode 会执行两次）
     if (loadAttemptRef.current) return;
     loadAttemptRef.current = true;
 
-    // 优先使用缓存的数据（StrictMode 第二次执行时 localStorage 已被清除）
     let storedWords = cachedStorageRef.current?.words || localStorage.getItem('error-dictation-words');
     let storedTime = cachedStorageRef.current?.time || localStorage.getItem('error-dictation-words-time');
+    let storedSourceGroup = localStorage.getItem('error-dictation-source-group');
 
-    // 第一次读取时缓存数据
     if (!cachedStorageRef.current && storedWords) {
       cachedStorageRef.current = { words: storedWords, time: storedTime };
     }
@@ -88,9 +80,7 @@ export default function ErrorDictationPage() {
         try {
           const decoded = JSON.parse(storedWords);
           if (Array.isArray(decoded) && decoded.length > 0) {
-            // 向下兼容：可能是 word 对象数组（旧格式）或 word ID 数组（新格式）
             if (typeof decoded[0] === 'string') {
-              // 新格式：word ID 数组，从 chapters 查实时 errorCount
               const allWords = [];
               chapters.forEach(ch => ch.groups.forEach(g => allWords.push(...g.words)));
               const resolved = decoded
@@ -98,13 +88,16 @@ export default function ErrorDictationPage() {
                 .filter(Boolean);
               setErrorWords(resolved);
             } else {
-              // 旧格式：直接使用对象
               setErrorWords(decoded);
+            }
+            if (storedSourceGroup) {
+              setSourceGroupId(storedSourceGroup);
             }
             setDecodeError(false);
             setLoaded(true);
             localStorage.removeItem('error-dictation-words');
             localStorage.removeItem('error-dictation-words-time');
+            localStorage.removeItem('error-dictation-source-group');
             return;
           }
         } catch (e) {
@@ -115,9 +108,31 @@ export default function ErrorDictationPage() {
 
     localStorage.removeItem('error-dictation-words');
     localStorage.removeItem('error-dictation-words-time');
+    localStorage.removeItem('error-dictation-source-group');
     setDecodeError(true);
     setLoaded(true);
-  }, [chapters, loaded]); // chapters 加载完成且 loaded 为 false 时才执行
+  }, [chapters, loaded]);
+
+  // 检查保存的进度
+  useEffect(() => {
+    if (errorWords.length === 0) return;
+    const saved = localStorage.getItem(`${STORAGE_KEY}-custom`);
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        if (data.words && data.words.length === errorWords.length) {
+          setHasSavedProgress(true);
+          setSavedProgressInfo({
+            completed: data.completedCount,
+            total: data.words.length,
+            date: data.savedAt
+          });
+        }
+      } catch (e) {
+        localStorage.removeItem(`${STORAGE_KEY}-custom`);
+      }
+    }
+  }, [errorWords]);
 
   // 保存进度
   const saveProgress = useCallback(() => {
@@ -178,7 +193,6 @@ export default function ErrorDictationPage() {
       (idx) => {
         const actualIdx = idx + fromIndex;
         setCurrentWordIndex(actualIdx);
-        // 【修复】不自动 focus，避免打断用户正在输入的光标
       }
     );
     
@@ -199,21 +213,16 @@ export default function ErrorDictationPage() {
     }
   }, [loadProgress, startDictation]);
 
-  // 【修复】暂停时直接调用 stop() 彻底终止播放循环和语音，
-  // 而不是 speechSynthesis.pause()，避免播放循环继续运行导致读音混乱
   const handlePause = useCallback(() => {
     stop();
     setIsPaused(true);
     setIsPlaying(false);
   }, [stop]);
 
-  // 【修复】继续播放时从 currentWordIndex 重新启动 playDictation，
-  // 而不是 speechSynthesis.resume()，因为 stop() 已经彻底终止了之前的循环
   const handleContinue = useCallback(() => {
     setIsPaused(false);
     setIsPlaying(true);
     
-    // playDictation 内部会重置 abortRef，所以可以直接调用
     playPromiseRef.current = playDictation(
       errorWords.slice(currentWordIndex),
       playRate,
@@ -221,7 +230,6 @@ export default function ErrorDictationPage() {
       (idx) => {
         const actualIdx = idx + currentWordIndex;
         setCurrentWordIndex(actualIdx);
-        // 不自动 focus，避免打断用户正在输入的光标
       }
     );
     
@@ -247,7 +255,6 @@ export default function ErrorDictationPage() {
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
       
-      // 使用保存的语音
       const savedVoiceName = localStorage.getItem('selected-voice');
       const voices = window.speechSynthesis.getVoices();
       const savedVoice = voices.find(v => v.name === savedVoiceName);
@@ -259,6 +266,26 @@ export default function ErrorDictationPage() {
       window.speechSynthesis.speak(utterance);
     }
   }, [errorWords, currentWordIndex, playRate]);
+
+  // 播放错误单词的发音
+  const playWordAudio = useCallback((word) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(word);
+    utterance.lang = 'en-GB';
+    utterance.rate = 0.8;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    
+    const savedVoiceName = localStorage.getItem('selected-voice');
+    const voices = window.speechSynthesis.getVoices();
+    const savedVoice = voices.find(v => v.name === savedVoiceName);
+    if (savedVoice) {
+      utterance.voice = savedVoice;
+      utterance.lang = savedVoice.lang;
+    }
+    
+    window.speechSynthesis.speak(utterance);
+  }, []);
 
   const handleSubmit = useCallback(() => {
     if (isPlaying) {
@@ -299,11 +326,13 @@ export default function ErrorDictationPage() {
   const handleDictateErrors = useCallback(() => {
     const wrongWordIds = results.filter(r => !r.isCorrect).map(r => r.word.id);
     if (wrongWordIds.length === 0) return;
-    // 只存 word IDs，保证 errorCount 与 chapters 同步
     localStorage.setItem('error-dictation-words', JSON.stringify(wrongWordIds));
     localStorage.setItem('error-dictation-words-time', Date.now().toString());
+    if (sourceGroupId) {
+      localStorage.setItem('error-dictation-source-group', sourceGroupId);
+    }
     navigate(`/dictation-error?t=${Date.now()}`);
-  }, [results, navigate]);
+  }, [results, navigate, sourceGroupId]);
 
   useEffect(() => {
     return () => {
@@ -419,7 +448,7 @@ export default function ErrorDictationPage() {
               </div>
             )}
             
-            {/* 【修复】Speed & Interval Settings - 使用滑块自由调节，替代原来的两档选择 */}
+            {/* Speed & Interval Settings */}
             <div className="mb-6 bg-white/60 rounded-xl p-4 text-left">
               <p className="text-sm font-medium text-gray-600 flex items-center gap-1 mb-3">
                 <Settings size={14} />
@@ -585,7 +614,7 @@ export default function ErrorDictationPage() {
               </p>
             )}
             
-            {/* 【修复】播放中也可以调节速度和间隔，通过 updatePlaybackParams 实时生效 */}
+            {/* Inline Speed & Interval Controls */}
             <div className="pt-2 border-t border-gray-100">
               <div className="flex items-center gap-4">
                 <div className="flex-1">
@@ -764,6 +793,14 @@ export default function ErrorDictationPage() {
                       {result.word.phonetic && (
                         <span className="text-xs text-gray-400 phonetic">[{result.word.phonetic}]</span>
                       )}
+                      {/* 需求6: 错误单词发音按钮 */}
+                      <button
+                        onClick={() => playWordAudio(result.word.word)}
+                        className="p-1 text-coral-500 hover:text-coral-700 hover:bg-coral-50 rounded-full transition-colors"
+                        title="播放发音"
+                      >
+                        <Volume2 size={14} />
+                      </button>
                     </div>
                     <p className="text-xs text-gray-500">{result.word.meaning}</p>
                     {!result.isCorrect && !result.isEmpty && (
@@ -774,6 +811,24 @@ export default function ErrorDictationPage() {
                     {result.isEmpty && (
                       <p className="text-xs text-gray-400 italic">未作答</p>
                     )}
+                    {/* 需求1: 可修改错误次数 */}
+                    <div className="flex items-center gap-1 mt-1">
+                      <button
+                        onClick={() => setErrorCount(result.word.id, result.word.errorCount - 1)}
+                        className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 hover:text-red-500 transition-colors text-gray-500"
+                      >
+                        <Minus size={10} />
+                      </button>
+                      <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full min-w-[24px] text-center">
+                        {result.word.errorCount}
+                      </span>
+                      <button
+                        onClick={() => setErrorCount(result.word.id, result.word.errorCount + 1)}
+                        className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 hover:bg-coral-100 hover:text-coral-500 transition-colors text-gray-500"
+                      >
+                        <Plus size={10} />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {wrongCount + emptyCount === 0 && (
@@ -803,12 +858,21 @@ export default function ErrorDictationPage() {
               </button>
             )}
             
-            <Link
-              to="/error-words"
-              className="flex-1 btn-primary text-center"
-            >
-              返回错题本
-            </Link>
+            {sourceGroupId ? (
+              <Link
+                to={`/group/${sourceGroupId}`}
+                className="flex-1 btn-primary text-center"
+              >
+                返回本单元
+              </Link>
+            ) : (
+              <Link
+                to="/error-words"
+                className="flex-1 btn-primary text-center"
+              >
+                返回错题本
+              </Link>
+            )}
           </div>
         </div>
       )}

@@ -1,10 +1,10 @@
 import { useParams, Link } from 'react-router-dom';
 import { useWords } from '../context/WordsContext';
-import { BookOpen, PenTool, ArrowLeft, Minus, Plus, AlertCircle } from 'lucide-react';
+import { BookOpen, PenTool, ArrowLeft, Minus, Plus, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 
 export default function GroupDetail() {
   const { id } = useParams();
-  const { getGroup, setErrorCount, initialized } = useWords();
+  const { getGroup, setErrorCount, initialized, getGroupDictationHistory, getLastDictationPosition } = useWords();
   
   if (!initialized) {
     return (
@@ -28,6 +28,8 @@ export default function GroupDetail() {
   }
   
   const errorCount = group.words.filter(w => w.errorCount > 0).length;
+  const history = getGroupDictationHistory(id);
+  const lastPos = getLastDictationPosition(id);
   
   return (
     <div className="space-y-6">
@@ -54,6 +56,34 @@ export default function GroupDetail() {
             <p className="text-sm text-gray-400">单词</p>
           </div>
         </div>
+        
+        {/* 需求5: 正确率显示 */}
+        {history && (
+          <div className="bg-green-50 rounded-xl p-3 flex items-center gap-2 mb-3">
+            <CheckCircle className="text-green-500" size={18} />
+            <span className="text-green-700 text-sm">
+              上次正确率: <strong>{history.lastAccuracy}%</strong>
+              <span className="text-green-500 ml-2">
+                ({history.lastCorrectCount}/{history.lastTotalCount})
+              </span>
+            </span>
+            {history.history && history.history.length > 1 && (
+              <span className="text-xs text-green-500 ml-auto">
+                已练习 {history.history.length} 次
+              </span>
+            )}
+          </div>
+        )}
+        
+        {/* 需求4: 上次听写标注 */}
+        {lastPos && (
+          <div className="bg-coral-50 rounded-xl p-3 flex items-center gap-2 mb-3">
+            <Clock className="text-coral-500" size={18} />
+            <span className="text-coral-700 text-sm">
+              上次听写: {new Date(lastPos.date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        )}
         
         {errorCount > 0 && (
           <div className="bg-red-50 rounded-xl p-3 flex items-center gap-2">
